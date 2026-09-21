@@ -251,6 +251,14 @@
       renderServiceSelect();
       if (!state.currentServiceId || !state.services.find((s) => s.id === state.currentServiceId)) {
         selectService(state.services[0].id);
+      } else {
+        // Le service courant existe déjà (créé/renommé localement, ou par un
+        // autre onglet) : on ne rappelle pas selectService (qui resouscrirait
+        // inutilement critères/mesures/historique), mais currentService()
+        // dépend de ce tableau — on redéclenche donc un rendu pour que le
+        // tableau de bord et l'évaluation ne restent jamais bloqués sur
+        // "Chargement…" en attendant un futur changement de ces sous-collections.
+        onDataChanged();
       }
     }, (e) => toast("Erreur de synchronisation : " + e.message));
   }
@@ -453,12 +461,30 @@
         const cible = Number(document.getElementById("ns-cible").value) || 80;
         const id = "svc-" + uidLike();
         const cibleDate = new Date(); cibleDate.setFullYear(cibleDate.getFullYear() + 2);
-        svcDoc(id).set({
-          nom, client, dateCreation: todayIso(), isExample: false,
+        const newService = {
+          id, nom, client, dateCreation: todayIso(), isExample: false,
           cibleScore: cible, cibleDate: cibleDate.toISOString().slice(0, 10),
           referentNom: "", referentTitre: "", revueFrequence: "trimestre", cheminsCritiques: "",
-        }).then(() => { closeModal(); selectService(id); toast("Projet créé"); })
-          .catch((e) => toast("Erreur : " + e.message));
+        };
+        svcDoc(id).set({
+          nom: newService.nom, client: newService.client, dateCreation: newService.dateCreation,
+          isExample: newService.isExample, cibleScore: newService.cibleScore, cibleDate: newService.cibleDate,
+          referentNom: newService.referentNom, referentTitre: newService.referentTitre,
+          revueFrequence: newService.revueFrequence, cheminsCritiques: newService.cheminsCritiques,
+        }).then(() => {
+          // On insère immédiatement le nouveau projet dans state.services au lieu
+          // d'attendre le prochain sondage (jusqu'à 4s) de la collection "services" :
+          // sinon selectService() bascule tout de suite currentServiceId dessus alors
+          // que currentService() (qui lit state.services) ne le trouve pas encore, et
+          // le tableau de bord / l'évaluation restent bloqués sur "Chargement…" tant
+          // qu'aucune sous-collection (critères/mesures) ne change entre-temps.
+          if (!state.services.find((s) => s.id === id)) {
+            state.services.push(newService);
+            state.services.sort((a, b) => (a.dateCreation || "").localeCompare(b.dateCreation || ""));
+            renderServiceSelect();
+          }
+          closeModal(); selectService(id); toast("Projet créé");
+        }).catch((e) => toast("Erreur : " + e.message));
       });
     });
   }
