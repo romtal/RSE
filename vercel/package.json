@@ -1,0 +1,9 @@
+{
+  "name": "mesure-ecoconception",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Outil RGESN 2024 (auto-évaluation, mesure d'empreinte carbone, déclaration d'écoconception, marchés publics) — déploiement Vercel autonome avec persistance Postgres.",
+  "dependencies": {
+    "pg": "^8.23.0"
+  }
+}
