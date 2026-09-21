@@ -5,6 +5,14 @@
 //
 // Table: documents(path TEXT PRIMARY KEY, data JSONB, updated_at TIMESTAMPTZ)
 //
+// This is a single, fixed-name function (not a [...path].js catch-all): on
+// this project Vercel's dynamic-segment-to-req.query mapping for catch-all
+// API routes did not behave as documented (a 1-segment call reached the
+// function with an empty path, a 2-segment call 404'd before even reaching
+// it). vercel.json rewrites every /api/db/* request to this function, and
+// the actual path is parsed straight out of req.url below instead of relying
+// on req.query — this sidesteps that routing quirk entirely.
+//
 // Routing convention (path = the URL segments after /api/db/, joined by "/"):
 //   - even number of segments  -> a DOCUMENT path (e.g. services/abc)
 //       GET    -> { exists, data }
@@ -67,6 +75,17 @@ async function ensureSchema() {
 // simple prefix-matching scheme below.
 const SEGMENT_RE = /^[A-Za-z0-9_\-.~:@+]+$/;
 
+// Parses the real path out of the raw request URL rather than trusting
+// Vercel to have populated req.query from a [...catch-all] route match
+// (see the note at the top of this file for why).
+function pathFromUrl(reqUrl) {
+  const pathname = reqUrl.split("?")[0];
+  const prefix = "/api/db/";
+  const idx = pathname.indexOf(prefix);
+  const tail = idx === -1 ? "" : pathname.slice(idx + prefix.length);
+  return tail.split("/").filter(Boolean).map(decodeURIComponent);
+}
+
 function normalizePath(rawSegments) {
   const segments = (Array.isArray(rawSegments) ? rawSegments : [rawSegments]).filter(Boolean);
   if (segments.length === 0) throw httpError(400, "Chemin vide.");
@@ -116,7 +135,7 @@ module.exports = async function handler(req, res) {
 
   try {
     await ensureSchema();
-    const path = normalizePath(req.query.path);
+    const path = normalizePath(pathFromUrl(req.url));
     const segCount = path.split("/").length;
     const isDocument = segCount % 2 === 0;
     const db = getPool();
